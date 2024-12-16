@@ -1,0 +1,348 @@
+---
+title: "GAPMINDER | INCOME & GDP PER CAPITA"  
+format: dashboard 
+author: "Jerome Milimu"  
+---
+
+```{python}
+import pandas as pd
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+import itables
+import tabulate
+import json
+
+# Load the data from the two selected indicators
+daily_income_raw = pd.read_csv("data/mincpcap_cppp.csv")
+# daily_income_raw
+
+gdp_per_cap_raw = pd.read_csv("data/gdp_pcap.csv")
+# gdp_per_cap_raw
+
+
+# Reshape raw data to long format
+daily_income_long = daily_income_raw.melt(
+    id_vars=["country"], var_name="year", value_name="daily_income"
+).sort_values(["country", "year"])
+# daily_income_long
+
+gdp_per_cap_long = gdp_per_cap_raw.melt(
+    id_vars=["country"], var_name="year", value_name="gdp_per_cap"
+).sort_values(["country", "year"])
+# gdp_per_cap_long
+
+
+# Clean up: k to 1000
+for col in ["gdp_per_cap"]:
+    has_k = gdp_per_cap_long[col].str.contains("k")
+    values = gdp_per_cap_long[col].str.replace("k", "")
+    gdp_per_cap_long[col] = np.where(
+        has_k, values.astype(float) * 1000, values.astype(float)
+    )
+
+# gdp_per_cap_long
+
+
+# Filter for year 2023
+daily_income_long_2023 = daily_income_long[daily_income_long["year"] == "2023"]
+# daily_income_long_2023
+
+gdp_per_cap_long_2023 = gdp_per_cap_long[gdp_per_cap_long["year"] == "2023"]
+# gdp_per_cap_long_2023
+
+
+# Compute highest daily income
+highest_row1 = (
+    daily_income_long_2023.sort_values("daily_income", ascending=False)
+    .head(1)
+    .squeeze()
+)
+highest_daily_income_country = highest_row1["country"]
+highest_daily_income_value = round(highest_row1["daily_income"], 1)
+
+# Compute highest gdp per capita
+highest_row2 = (
+    gdp_per_cap_long_2023.sort_values("gdp_per_cap", ascending=False).head(1).squeeze()
+)
+highest_gdp_per_cap_country = highest_row2["country"]
+highest_gdp_per_cap_value = round(highest_row2["gdp_per_cap"], 1)
+
+
+# Compute lowest daily income
+lowest_row1 = (
+    daily_income_long_2023.sort_values("daily_income", ascending=True).head(1).squeeze()
+)
+lowest_daily_income_country = lowest_row1["country"]
+lowest_daily_income_value = round(lowest_row1["daily_income"], 1)
+
+# Compute lowest gdp per capita
+lowest_row2 = (
+    gdp_per_cap_long_2023.sort_values("gdp_per_cap", ascending=True).head(1).squeeze()
+)
+lowest_gdp_per_cap_country = lowest_row2["country"]
+lowest_gdp_per_cap_value = round(lowest_row2["gdp_per_cap"], 1)
+
+
+# Merging the two dataframes on the 'country' column
+merged_data = pd.merge(
+    daily_income_long_2023, gdp_per_cap_long_2023, on=["country", "year"]
+)
+
+# Calculate the productivity ratio
+merged_data["income_gdp_ratio"] = (merged_data["daily_income"] * 365) / merged_data[
+    "gdp_per_cap"
+]
+
+# Round the productivity ratio to 1 decimal place
+# merged_data["income_gdp_ratio"] = merged_data["income_gdp_ratio"].round(1)
+# merged_data
+
+
+# Compute highest productivity ratio
+highest_row3 = (
+    merged_data.sort_values("income_gdp_ratio", ascending=False).head(1).squeeze()
+)
+highest_income_gdp_ratio_country = highest_row3["country"]
+highest_income_gdp_ratio_value = round(highest_row3["income_gdp_ratio"], 1)
+
+# Compute lowest productivity ratio
+lowest_row3 = (
+    merged_data.sort_values("income_gdp_ratio", ascending=True).head(1).squeeze()
+)
+lowest_income_gdp_ratio_country = lowest_row3["country"]
+lowest_income_gdp_ratio_value = round(lowest_row3["income_gdp_ratio"], 1)
+
+
+# Distribution of Daily Income
+hist_daily_income = px.histogram(
+    merged_data,
+    x="daily_income",
+    nbins=30,
+    title="Distribution of Daily Income (2023)",
+    labels={"daily_income": "Daily Income (USD)"},
+    template="plotly_white",
+    marginal="box",
+)
+# hist_daily_income.update_layout(yaxis_title="Frequency")
+# hist_daily_income.show()
+
+
+# Top 10 Countries by Daily Income
+top_10_income = merged_data.nlargest(10, "daily_income").sort_values(
+    "daily_income", ascending=True
+)
+bar_daily_income = px.bar(
+    top_10_income,
+    x="daily_income",
+    y="country",
+    orientation="h",
+    title="Top 10 Countries by Daily Income (2023)",
+    labels={"daily_income": "Daily Income (USD)", "country": "Country"},
+    template="plotly_white",
+    color="daily_income",
+    color_continuous_scale="thermal",
+)
+# bar_daily_income.update_layout(yaxis_categoryorder="total ascending")
+# bar_daily_income.show()
+
+
+# GDP map using plotly express
+map_fig_gdp = px.choropleth(
+    merged_data,
+    locations="country",
+    locationmode="country names",
+    color="gdp_per_cap",
+    title="Global Distribution of GDP Per Capita (2023)",
+    labels={"gdp_per_cap": "GDP Per Capita (USD)"},
+    template="plotly_white",
+    color_continuous_scale="speed",
+)
+# map_fig_gdp.update_geos(showcoastlines=True, coastlinecolor="LightGray")
+# map_fig_gdp.show()
+
+
+# Largest 10 countries by GDP
+top_10_gdp = merged_data.nlargest(10, "gdp_per_cap").sort_values(
+    "gdp_per_cap", ascending=True
+)
+bar_gdp = px.bar(
+    top_10_gdp,
+    x="gdp_per_cap",
+    y="country",
+    orientation="h",
+    title="Top 10 Countries by GDP Per Capita (2023)",
+    labels={"gdp_per_cap": "GDP Per Capita (USD)", "country": "Country"},
+    template="plotly_white",
+    color="gdp_per_cap",
+    color_continuous_scale="deep",
+)
+# bar_gdp.update_layout(yaxis_categoryorder="total ascending")
+# bar_gdp.show()
+
+# GDP per Capita vs Daily Income (Scatter Plot)
+income_gdp_scatter = px.scatter(
+    merged_data,
+    x="gdp_per_cap",
+    y="daily_income",
+    color="income_gdp_ratio",
+    size="income_gdp_ratio",
+    hover_name="country",
+    title="GDP per Capita vs Daily Income (2023)",
+    labels={
+        "gdp_per_cap": "GDP per Capita (USD)",
+        "daily_income": "Daily Income (USD)",
+    },
+    template="plotly_white",
+    color_continuous_scale="Viridis",
+)
+# income_gdp_scatter.update_layout(coloraxis_colorbar_title="Income-to-GDP Ratio")
+# income_gdp_scatter.show()
+
+
+# Countries with Largest Daily Income to GDP Ratio
+top_10_income_gdp = merged_data.nlargest(10, "income_gdp_ratio").sort_values(
+    "income_gdp_ratio", ascending=True
+)
+bar_income_gdp = px.bar(
+    top_10_income_gdp,
+    x="income_gdp_ratio",
+    y="country",
+    orientation="h",
+    title="Top 10 Countries with Largest Daily Income to GDP Ratio (2023)",
+    labels={"income_gdp_ratio": "Income TO GDP ratio (USD)", "country": "Country"},
+    template="plotly_white",
+    color="income_gdp_ratio",
+    color_continuous_scale="turbid",
+)
+# bar_income_gdp.update_layout(yaxis_categoryorder="total ascending")
+# bar_income_gdp.show()
+```
+
+
+# DAILY INCOME
+
+## Row 1 {height=30%}
+
+::: {.valuebox icon="arrow-up-right-circle" color="#008080" title="Highest Daily Income (USD)"}
+
+`{python} str(highest_daily_income_value)`
+
+`{python} highest_daily_income_country`
+
+:::
+
+::: {.valuebox icon="arrow-down-right-circle" color="#66b2b2" title="Lowest Daily Income (USD)"}
+
+`{python} str(lowest_daily_income_value)`
+
+`{python} lowest_daily_income_country`
+
+:::
+
+## Row 2 {height=60%}
+
+### {width=70%}
+
+
+```{python}
+hist_daily_income
+```
+### {width=40%}
+
+
+```{python}
+bar_daily_income
+```
+
+
+# GDP PER CAP
+
+## Row 1 {height=30%}
+
+::: {.valuebox icon="graph-up-arrow" color="#008080" title="Highest GDP Per Capita (USD)"} 
+
+`{python} str(highest_gdp_per_cap_value)`
+
+`{python} highest_gdp_per_cap_country`
+
+:::
+
+::: {.valuebox icon="graph-down-arrow" color="#66b2b2" title="Lowest GDP Per Capita (USD)"} 
+
+`{python} str(lowest_gdp_per_cap_value)`
+
+`{python} lowest_gdp_per_cap_country`
+
+:::
+
+## Row 2 {height=60%}
+
+### {width=70%}
+
+
+```{python}
+map_fig_gdp
+```
+### {width=40%}
+
+
+```{python}
+bar_gdp
+```
+
+
+# RATIO ANALYSIS
+
+## Row 1 {height=30%}
+
+::: {.valuebox icon="caret-up-square" color="#008080" title="Highest Income to GDP Ratio"} 
+
+`{python} str(highest_income_gdp_ratio_value)`
+
+`{python} highest_income_gdp_ratio_country`
+
+:::
+
+::: {.valuebox icon="caret-down-square" color="#66b2b2" title="Lowest Income to GDP Ratio"} 
+
+`{python} str(lowest_income_gdp_ratio_value)`
+
+`{python} lowest_income_gdp_ratio_country`
+
+:::
+
+## Row 2 {height=60%}
+
+### {width=70%}
+
+
+```{python}
+income_gdp_scatter
+```
+### {width=40%}
+
+
+```{python}
+bar_income_gdp
+```
+
+
+# DATA DOWNLOAD
+
+
+```{python}
+# Display full dataset with itables
+itables.show(merged_data, caption="Gapminder Dataset (2023)", buttons=["csvHtml5"])
+
+```
+
+# ABOUT
+
+This data comes from the `gapminder` dataset, which is originally sourced from the Gapminder Foundation.
+
+The Gapminder Foundation is a non-profit venture that promotes sustainable global development and achievement of the United Nations Millennium Development Goals by increasing use and understanding of statistics and other information about social, economic, and environmental development.
+
+**Video on Countries By GDP per Capita in 2023 - IMF Report:**
+
+<iframe width="762" height="429" src="https://www.youtube.com/embed/_2410xiAwx8" title="Richest Country By GDP per Capita 2023 | IMF Report" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
